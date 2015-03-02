@@ -37,7 +37,7 @@ import org.kie.services.shared.ServicesVersion;
  * It takes care of implementing the methods specified as well as managing the 
  * state of the internal {@link RemoteConfiguration} instance.
  */
-class RemoteCommandWebserviceClientBuilderImpl extends RemoteWebserviceClientBuilderImpl<CommandWebService> {
+class RemoteCommandWebserviceClientBuilderImpl extends RemoteWebserviceClientBuilderImpl<CommandWebService>, OrderedRemoteWebServiceRuntimeEngineBuilderAll {
 
     private final static String commandServiceNamespace = "http://services.remote.kie.org/" + ServicesVersion.VERSION + "/command";
     private final static QName commandServiceQName = new QName(commandServiceNamespace, "CommandServiceBasicAuth");

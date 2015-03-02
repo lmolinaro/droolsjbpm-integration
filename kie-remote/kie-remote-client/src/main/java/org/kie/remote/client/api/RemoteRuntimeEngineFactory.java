@@ -9,6 +9,9 @@ import javax.naming.NamingException;
 
 import org.kie.api.runtime.manager.RuntimeEngine;
 import org.kie.remote.client.api.exception.RemoteCommunicationException;
+import org.kie.remote.client.api.order.OrderedRemoteJmsRuntimeEngineBuilder;
+import org.kie.remote.client.api.order.OrderedRemoteRestRuntimeEngineBuilder;
+import org.kie.remote.client.api.order.OrderedRemoteWebServiceRuntimeEngineBuilder.OrderedRemoteWebServiceRuntimeEngineBuilderAll;
 import org.kie.remote.services.ws.command.generated.CommandWebService;
 
 /**
@@ -30,7 +33,7 @@ public abstract class RemoteRuntimeEngineFactory {
     public static RemoteJmsRuntimeEngineBuilder newJmsBuilder() { 
        return org.kie.services.client.api.RemoteRuntimeEngineFactory.newJmsBuilder();
     }
-    
+   
     /**
      * Create a new {@link RemoteRestRuntimeEngineBuilder} instance 
      * to configure and buid a remote API client {@link RuntimeEngine} instance.
@@ -47,6 +50,33 @@ public abstract class RemoteRuntimeEngineFactory {
      */
     public static RemoteWebserviceClientBuilder<RemoteWebserviceClientBuilder, CommandWebService> newCommandWebServiceClientBuilder() { 
        return org.kie.services.client.api.RemoteRuntimeEngineFactory.newCommandWebServiceClientBuilder();
+    }
+   
+    /**
+     * Create a new {@link RemoteJmsRuntimeEngineBuilder} instance 
+     * to configure and buid a remote API client {@link RuntimeEngine} instance.
+     * @return A {@link RemoteJmsRuntimeEngineBuilder} instance
+     */
+    public static OrderedRemoteJmsRuntimeEngineBuilder newOrderedJmsBuilder() { 
+       return org.kie.services.client.api.RemoteRuntimeEngineFactory.newOrderedJmsBuilder();
+    }
+    
+    /**
+     * Create a new {@link RemoteRestRuntimeEngineBuilder} instance 
+     * to configure and buid a remote API client {@link RuntimeEngine} instance.
+     * @return A {@link RemoteRestRuntimeEngineBuilder} instance
+     */
+    public static OrderedRemoteRestRuntimeEngineBuilder newOrderedRestBuilder() { 
+       return org.kie.services.client.api.RemoteRuntimeEngineFactory.newOrderedRestBuilder();
+    }
+    
+    /**
+     * Create a new {@link RemoteWebserviceClientBuilder} instance 
+     * to configure and buid a remote client for the {@link CommandWebService}.
+     * @return A {@link RemoteWebserviceClientBuilder} instance
+     */
+    public static OrderedRemoteWebServiceRuntimeEngineBuilderAll newOrderedCommandWebServiceClientBuilder() { 
+       return org.kie.services.client.api.RemoteRuntimeEngineFactory.newOrderedCommandWebServiceClientBuilder();
     }
     
     /**
