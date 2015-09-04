@@ -36,8 +36,10 @@ import org.jbpm.services.task.commands.GetTaskContentCommand;
 import org.jbpm.services.task.commands.TaskCommand;
 import org.jbpm.services.task.exception.PermissionDeniedException;
 import org.kie.api.command.Command;
+import org.kie.api.definition.process.Process;
 import org.kie.api.runtime.KieSession;
 import org.kie.api.runtime.manager.RuntimeManager;
+import org.kie.api.runtime.process.WorkItem;
 import org.kie.api.task.TaskService;
 import org.kie.api.task.model.Task;
 import org.kie.remote.services.AcceptedServerCommands;
@@ -66,7 +68,7 @@ import org.w3c.dom.Element;
 public class ProcessRequestBean {
 
     private static final Logger logger = LoggerFactory.getLogger(ProcessRequestBean.class);
-    
+
     /* KIE processing */
 
     @Inject
@@ -77,12 +79,12 @@ public class ProcessRequestBean {
 
     /** AuditLogService **/
     private static final String PERSISTENCE_UNIT_NAME = "org.jbpm.domain";
-    
+
     @PersistenceUnit(unitName = PERSISTENCE_UNIT_NAME)
     private EntityManagerFactory emf;
-   
+
     private AuditLogService auditLogService;
-  
+
     // Injection methods for tests
 
     public void setProcessService(ProcessService processService) {
@@ -98,7 +100,7 @@ public class ProcessRequestBean {
     }
 
     // Audit Log Service logic 
-    
+
     @PostConstruct
     public void initAuditLogService() { 
         auditLogService = new JPAAuditLogService(emf);
@@ -106,13 +108,13 @@ public class ProcessRequestBean {
             ((JPAAuditLogService) auditLogService).setPersistenceUnitName(PERSISTENCE_UNIT_NAME);
         }
     }
-    
+
     public AuditLogService getAuditLogService() { 
         return auditLogService;
     }
-    
+
     // Methods used
-    
+
     public void processCommand(Command cmd, JaxbCommandsRequest request, int i, JaxbCommandsResponse jaxbResponse) { 
         String version = request.getVersion();
         if( version == null ) { 
@@ -122,16 +124,16 @@ public class ProcessRequestBean {
             logger.warn( "Request received from client version [{}] while server is version [{}]! THIS MAY CAUSE PROBLEMS!", version, VERSION);
         }
         jaxbResponse.setVersion(VERSION);
-        
+
         String cmdName = cmd.getClass().getSimpleName();
         logger.debug("Processing command " + cmdName);
         String errMsg = "Unable to execute " + cmdName + "/" + i;
-        
+
         Object cmdResult = null;
         try {
             // check that all parameters have been correctly deserialized/unmarshalled
             preprocessCommand(cmd);
-            
+
             if( cmd instanceof TaskCommand<?> ) { 
                 TaskCommand<?> taskCmd = (TaskCommand<?>) cmd;
                 cmdResult = doTaskOperation(
@@ -168,58 +170,58 @@ public class ProcessRequestBean {
             }
         }
     }
-   
+
     void preprocessCommand(Command cmd) { 
-       if( AcceptedServerCommands.SEND_OBJECT_PARAMETER_COMMANDS.contains(cmd.getClass()) ) { 
-           if( cmd instanceof CompleteWorkItemCommand ) {
-               checkThatUserDefinedClassesWereUnmarshalled(((CompleteWorkItemCommand) cmd).getResults());
-           } else if( cmd instanceof SignalEventCommand ) {
-               checkThatUserDefinedClassesWereUnmarshalled(((SignalEventCommand) cmd).getEvent());
-           } else if( cmd instanceof StartCorrelatedProcessCommand ) {
-               checkThatUserDefinedClassesWereUnmarshalled(((StartCorrelatedProcessCommand) cmd).getData());
-               checkThatUserDefinedClassesWereUnmarshalled(((StartCorrelatedProcessCommand) cmd).getParameters());
-           } else if( cmd instanceof StartProcessCommand ) {
-               checkThatUserDefinedClassesWereUnmarshalled(((StartProcessCommand) cmd).getData());
-               checkThatUserDefinedClassesWereUnmarshalled(((StartProcessCommand) cmd).getParameters());
-           } else if( cmd instanceof SetGlobalCommand ) {
-               checkThatUserDefinedClassesWereUnmarshalled(((SetGlobalCommand) cmd).getObject());
-           } else if( cmd instanceof InsertObjectCommand ) {
-               checkThatUserDefinedClassesWereUnmarshalled(((InsertObjectCommand) cmd).getObject());
-           } else if( cmd instanceof UpdateCommand ) {
-               checkThatUserDefinedClassesWereUnmarshalled(((UpdateCommand) cmd).getObject());
-           } else if( cmd instanceof AddTaskCommand ) {
-               checkThatUserDefinedClassesWereUnmarshalled(((AddTaskCommand) cmd).getParams());
-           } else if( cmd instanceof CompleteTaskCommand ) {
-               checkThatUserDefinedClassesWereUnmarshalled(((CompleteTaskCommand) cmd).getData());
-           } else if( cmd instanceof FailTaskCommand ) {
-               checkThatUserDefinedClassesWereUnmarshalled(((FailTaskCommand) cmd).getData());
-           }  
-       }
+        if( AcceptedServerCommands.SEND_OBJECT_PARAMETER_COMMANDS.contains(cmd.getClass()) ) { 
+            if( cmd instanceof CompleteWorkItemCommand ) {
+                checkThatUserDefinedClassesWereUnmarshalled(((CompleteWorkItemCommand) cmd).getResults());
+            } else if( cmd instanceof SignalEventCommand ) {
+                checkThatUserDefinedClassesWereUnmarshalled(((SignalEventCommand) cmd).getEvent());
+            } else if( cmd instanceof StartCorrelatedProcessCommand ) {
+                checkThatUserDefinedClassesWereUnmarshalled(((StartCorrelatedProcessCommand) cmd).getData());
+                checkThatUserDefinedClassesWereUnmarshalled(((StartCorrelatedProcessCommand) cmd).getParameters());
+            } else if( cmd instanceof StartProcessCommand ) {
+                checkThatUserDefinedClassesWereUnmarshalled(((StartProcessCommand) cmd).getData());
+                checkThatUserDefinedClassesWereUnmarshalled(((StartProcessCommand) cmd).getParameters());
+            } else if( cmd instanceof SetGlobalCommand ) {
+                checkThatUserDefinedClassesWereUnmarshalled(((SetGlobalCommand) cmd).getObject());
+            } else if( cmd instanceof InsertObjectCommand ) {
+                checkThatUserDefinedClassesWereUnmarshalled(((InsertObjectCommand) cmd).getObject());
+            } else if( cmd instanceof UpdateCommand ) {
+                checkThatUserDefinedClassesWereUnmarshalled(((UpdateCommand) cmd).getObject());
+            } else if( cmd instanceof AddTaskCommand ) {
+                checkThatUserDefinedClassesWereUnmarshalled(((AddTaskCommand) cmd).getParams());
+            } else if( cmd instanceof CompleteTaskCommand ) {
+                checkThatUserDefinedClassesWereUnmarshalled(((CompleteTaskCommand) cmd).getData());
+            } else if( cmd instanceof FailTaskCommand ) {
+                checkThatUserDefinedClassesWereUnmarshalled(((FailTaskCommand) cmd).getData());
+            }  
+        }
     }
-    
+
     void checkThatUserDefinedClassesWereUnmarshalled(Object obj) { 
-       if( obj != null ) { 
-          if( obj instanceof List ) { 
-             for( Object listElem : (List) obj ) { 
-                 verifyObjectHasBeenUnmarshalled(listElem);
-             }
-          } else if( obj instanceof Map ) { 
-              for( Object mapVal : ((Map) obj).values() ) { 
-                 verifyObjectHasBeenUnmarshalled(mapVal);
-              }
-          } else { 
-              verifyObjectHasBeenUnmarshalled(obj);
-          }
-       }
+        if( obj != null ) { 
+            if( obj instanceof List ) { 
+                for( Object listElem : (List) obj ) { 
+                    verifyObjectHasBeenUnmarshalled(listElem);
+                }
+            } else if( obj instanceof Map ) { 
+                for( Object mapVal : ((Map) obj).values() ) { 
+                    verifyObjectHasBeenUnmarshalled(mapVal);
+                }
+            } else { 
+                verifyObjectHasBeenUnmarshalled(obj);
+            }
+        }
     }
-   
+
     private void verifyObjectHasBeenUnmarshalled(Object obj) { 
         if( Element.class.isAssignableFrom(obj.getClass()) ) { 
             String typeName = ((Element) obj).getAttribute("xsi:type");
             throw new IllegalStateException("Could not unmarshall user-defined class instance parameter of type '" + typeName + "'");
         }
     }
-    
+
     /**
      * Executes a command on the {@link KieSession} from the proper {@link RuntimeManager}. This method
      * ends up synchronizing around the retrieved {@link KieSession} in order to avoid race-conditions.
@@ -247,7 +249,7 @@ public class ProcessRequestBean {
         }
     }
 
-   
+
     /**
      * Returns the actual variable instance from the runtime (as opposed to retrieving the string value of the
      * variable via the history/audit operations. 
@@ -270,8 +272,59 @@ public class ProcessRequestBean {
         }
     }
 
+    /**
+     * Returns the actual instances' variables from the runtime (as opposed to retrieving the string value of the
+     * variable via the history/audit operations. 
+     * 
+     * @param deploymentId The id of the runtime
+     * @param processInstanceId The process instance id (required)
+     * @return The variables object instance.
+     */
+    public Object getVariablesObjectsInstanceFromRuntime(String deploymentId, long processInstanceId) { 
+        try {
+            Map<String, Object> processInstanceVariables = 
+                    processService.getProcessInstanceVariables(processInstanceId);
+            //                    processService.getProcessInstance(processInstanceId).getProcess().
+            List<WorkItem> workList = processService.getWorkItemByProcessInstance(processInstanceId);
+            StringBuilder sb=new StringBuilder();
+            if(workList!=null && workList.size()>0){
+                for (WorkItem workItem : workList) {
+                    sb.append("\n");
+                    sb.append(workItem.getId());
+                    sb.append("\n");
+                    sb.append(workItem.getName());
+                    sb.append("\n");
+                    sb.append(workItem.getState());
+                    sb.append("\n");
+                    sb.append(workItem.getProcessInstanceId());
+                    sb.append("\n");
+                    sb.append(workItem.getParameters().toString());
+                    sb.append("\n");
+                    sb.append(workItem.getParameters().keySet().toString());
+                    sb.append("\n");
+                    sb.append(workItem.getResults().toString());
+                    sb.append("\n");
+                    sb.append(processInstanceVariables.toString());
+                    sb.append("\n");
+                    sb.append(processInstanceVariables.keySet().toString());
+                    sb.append("\n");
+                }
+            }else{
+                sb.append("WorkList is null");
+            }
+            return sb.toString();
+            //            return processInstanceVariables;
+        } catch (ProcessInstanceNotFoundException e) {
+            throw KieRemoteRestOperationException.notFound("Process instance " + processInstanceId + " could not be found!");
+        } catch (org.jbpm.services.api.DeploymentNotFoundException e) {
+            throw KieRemoteRestOperationException.notFound(e.getMessage());
+        }  catch (RuntimeException re) {
+            throw KieRemoteRestOperationException.internalServerError(re.getMessage(), re);
+        }
+    }
+
     // task operations ------------------------------------------------------------------------------------------------------------
-    
+
     /**
      * There are 3 possibilities here: <ol>
      * <li>This is an operation that should be done on a deployment if possible, but it's an independent task.</li>
@@ -293,7 +346,7 @@ public class ProcessRequestBean {
         if( cmd instanceof GetTaskCommand 
                 || cmd instanceof GetContentCommand 
                 || cmd instanceof GetTaskContentCommand ) { 
-           cmd = new ExecuteAndSerializeCommand(cmd); 
+            cmd = new ExecuteAndSerializeCommand(cmd); 
         }
         try {
             return userTaskService.execute(deploymentId, cmd);

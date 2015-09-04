@@ -95,6 +95,22 @@ public class DeploymentResourceImpl extends ResourceBase {
    
 
     /**
+     * Returns a list of the first ten process definitions for the specified deployment.
+     * @return A {@link JaxbProcessDefinitionList} instance
+     */
+    @GET
+    @Path("/process")
+    public Response listFirstTenProcessDefinitions() { 
+        int [] pageInfo = {0,10};
+        int maxNumResults = 10; 
+        JaxbProcessDefinitionList jaxbProcDefList  = new JaxbProcessDefinitionList();
+        deployResourceBase.fillProcessDefinitionList(deploymentId, pageInfo, maxNumResults, jaxbProcDefList.getProcessDefinitionList());
+        JaxbProcessDefinitionList resultList 
+            = paginateAndCreateResult(pageInfo, jaxbProcDefList.getProcessDefinitionList(), new JaxbProcessDefinitionList());
+        return createCorrectVariant(resultList, headers);
+    }
+
+    /**
      * Returns a list of process definitions for the specified deployment.
      * @return A {@link JaxbProcessDefinitionList} instance
      */
@@ -112,7 +128,7 @@ public class DeploymentResourceImpl extends ResourceBase {
             = paginateAndCreateResult(pageInfo, jaxbProcDefList.getProcessDefinitionList(), new JaxbProcessDefinitionList());
         return createCorrectVariant(resultList, headers);
     }
-
+    
     @POST
     @Path("/activate")
     public Response activate() {

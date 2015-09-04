@@ -1,5 +1,6 @@
 package org.kie.remote.services.rest;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -14,6 +15,8 @@ import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 
 import org.drools.core.util.StringUtils;
+import org.jbpm.services.api.RuntimeDataService;
+import org.jbpm.services.api.model.ProcessDefinition;
 import org.jbpm.services.task.audit.commands.DeleteBAMTaskSummariesCommand;
 import org.jbpm.services.task.commands.ActivateTaskCommand;
 import org.jbpm.services.task.commands.ClaimNextAvailableTaskCommand;
@@ -37,9 +40,11 @@ import org.jbpm.services.task.impl.model.xml.JaxbContent;
 import org.jbpm.services.task.impl.model.xml.JaxbTask;
 import org.kie.api.task.model.OrganizationalEntity;
 import org.kie.api.task.model.Task;
+import org.kie.api.task.model.TaskData;
 import org.kie.internal.identity.IdentityProvider;
 import org.kie.remote.services.rest.exception.KieRemoteRestOperationException;
 import org.kie.remote.services.util.FormURLGenerator;
+import org.kie.services.client.serialization.jaxb.impl.process.JaxbProcessDefinition;
 import org.kie.services.client.serialization.jaxb.impl.task.JaxbTaskFormResponse;
 import org.kie.services.client.serialization.jaxb.rest.JaxbGenericResponse;
 import org.slf4j.Logger;
@@ -53,11 +58,11 @@ import org.slf4j.LoggerFactory;
 public class TaskResourceImpl extends ResourceBase {
 
     private static final Logger logger = LoggerFactory.getLogger(RuntimeResourceImpl.class);
-    
+
     /* REST information */
     @Context
     protected HttpHeaders headers;
-    
+
     /* KIE information and processing */
 
     @Inject
@@ -65,28 +70,34 @@ public class TaskResourceImpl extends ResourceBase {
 
     @Inject
     protected IdentityProvider identityProvider;
-   
+
     @Inject
     protected QueryResourceImpl queryResource;
-   
+
+    @Inject
+    private RuntimeDataService runtimeDataService;
+
+    //    @Inject
+    //    private DefinitionService bpmn2DataService;
+
     private static final String[] allowedOperations = { 
-        "activate", 
-        "claim", 
-        "claimnextavailable", 
-        "complete", 
-        "delegate", 
-        "exit",
-        "fail", 
-        "forward", 
-        "release", 
-        "resume", 
-        "skip", 
-        "start", 
-        "stop", 
-        "suspend", 
-        "nominate", 
-        "content"};
-    
+            "activate", 
+            "claim", 
+            "claimnextavailable", 
+            "complete", 
+            "delegate", 
+            "exit",
+            "fail", 
+            "forward", 
+            "release", 
+            "resume", 
+            "skip", 
+            "start", 
+            "stop", 
+            "suspend", 
+            "nominate", 
+    "content"};
+
     // Rest methods --------------------------------------------------------------------------------------------------------------
 
     @GET
@@ -95,7 +106,7 @@ public class TaskResourceImpl extends ResourceBase {
     public Response query() {
         return queryResource.taskSummaryQuery();
     }
-   
+
     @GET
     @Path("/{taskId: [0-9-]+}")
     public Response getTask(@PathParam("taskId") long taskId) { 
@@ -115,9 +126,9 @@ public class TaskResourceImpl extends ResourceBase {
         String oper = getRelativePath();
         String userId = identityProvider.getName();
         logger.debug("Executing " + operation + " on task " + taskId + " by user " + userId );
-       
+
         TaskCommand<?> cmd = null;
-        
+
         if ("activate".equalsIgnoreCase(operation)) {
             cmd = new ActivateTaskCommand(taskId, userId);
         } else if ("claim".equalsIgnoreCase(operation)) {
@@ -156,7 +167,7 @@ public class TaskResourceImpl extends ResourceBase {
         } else {
             throw KieRemoteRestOperationException.badRequest("Unsupported operation: " + oper);
         }
-        
+
         doRestTaskOperationWithTaskId(taskId, cmd);
         return createCorrectVariant(new JaxbGenericResponse(getRequestUri()), headers);
     }
@@ -169,7 +180,7 @@ public class TaskResourceImpl extends ResourceBase {
         }
         throw KieRemoteRestOperationException.badRequest("Operation '" + operation + "' is not supported on tasks.");
     }
-    
+
     @GET
     @Path("/{taskId: [0-9-]+}/content")
     public Response getTaskContentByTaskId(@PathParam("taskId") long taskId) { 
@@ -190,7 +201,36 @@ public class TaskResourceImpl extends ResourceBase {
         }
         return createCorrectVariant(content, headers);
     }
-    
+
+    @GET
+    @Path("/{taskId: [0-9-]+}/getFormData")
+    public Response getFormData(@PathParam("taskId") long taskId) { 
+        
+        TaskCommand<?> cmd = new GetTaskCommand(taskId);
+        Object result = doRestTaskOperationWithTaskId(taskId, cmd);
+        if( result == null ) {
+            throw KieRemoteRestOperationException.notFound("Task " + taskId + " could not be found.");
+        }
+        
+        JaxbTask taskJax = (JaxbTask) result;
+        TaskData td = taskJax.getTaskData();
+        String deploymentId = td.getDeploymentId();
+        String processId = td.getProcessId();
+        String formName=taskJax.getFormName();
+
+        ProcessDefinition processAssetDescList = runtimeDataService.getProcessesByDeploymentIdProcessId(deploymentId, processId);
+        JaxbProcessDefinition jaxbProcDef = convertProcAssetDescToJaxbProcDef(processAssetDescList);
+        String forms=jaxbProcDef.getForms().get(formName+"-taskform.form");
+
+        Map<String,String>ret=new HashMap<String, String>();
+        ret.put("deploiment", deploymentId);
+        ret.put("process-id", processId);
+        ret.put("formName", formName);
+        ret.put("form", forms);
+
+        return createCorrectVariant(ret, headers);
+    }
+
     @GET
     @Path("/{taskId: [0-9-]+}/showTaskForm")
     public Response getTaskFormByTaskId(@PathParam("taskId") long taskId) {
@@ -204,7 +244,7 @@ public class TaskResourceImpl extends ResourceBase {
             if (openers.size() == 1) {
                 opener = openers.get(0);
             }
-                String formUrl = formURLGenerator.generateFormTaskURL(getBaseUri(), taskId, opener);
+            String formUrl = formURLGenerator.generateFormTaskURL(getBaseUri(), taskId, opener);
             if (!StringUtils.isEmpty(formUrl)) {
                 JaxbTaskFormResponse response = new JaxbTaskFormResponse(formUrl, getRequestUri());
                 return createCorrectVariant(response, headers);
@@ -212,7 +252,7 @@ public class TaskResourceImpl extends ResourceBase {
         }
         throw KieRemoteRestOperationException.notFound("Task " + taskId + " could not be found.");
     }
-    
+
     @GET
     @Path("/content/{contentId: [0-9-]+}")
     public Response getTaskContentByContentId(@PathParam("contentId") long contentId) { 
@@ -224,13 +264,13 @@ public class TaskResourceImpl extends ResourceBase {
         }
         return createCorrectVariant(new JaxbContent(content), headers);
     }
-    
+
     @POST
     @Path("/history/bam/clear")
     public Response clearTaskBamHistory() { 
         doRestTaskOperation(new DeleteBAMTaskSummariesCommand());
         return createCorrectVariant(new JaxbGenericResponse(getRelativePath()), headers);
     }
- 
+
 
 }

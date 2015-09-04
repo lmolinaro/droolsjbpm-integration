@@ -526,7 +526,6 @@ public class ResourceBase {
         jaxbProcDef.setName(procAssetDesc.getName());
         jaxbProcDef.setPackageName(procAssetDesc.getPackageName());
         jaxbProcDef.setVersion(procAssetDesc.getVersion());
-        
         return jaxbProcDef;
     }
  

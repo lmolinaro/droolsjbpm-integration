@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+
 import javax.enterprise.context.RequestScoped;
 import javax.inject.Inject;
 import javax.ws.rs.GET;
@@ -55,18 +56,18 @@ import org.kie.services.client.serialization.jaxb.rest.JaxbGenericResponse;
 public class RuntimeResourceImpl extends ResourceBase {
 
     /* REST information */
-    
+
     @Context
     protected HttpHeaders headers;
-    
+
     @PathParam("deploymentId")
     protected String deploymentId;
-    
+
     /* KIE information and processing */
-    
+
     @Inject
     private RuntimeDataService runtimeDataService;
-   
+
     @Inject
     private DefinitionService bpmn2DataService;
 
@@ -75,7 +76,7 @@ public class RuntimeResourceImpl extends ResourceBase {
 
 
     // Rest methods --------------------------------------------------------------------------------------------------------------
- 
+
     @GET
     @Path("/process/{processDefId: [_a-zA-Z0-9-:\\.]+}/")
     public Response getProcessDefinitionInfo(@PathParam("processDefId") String processId) {
@@ -85,7 +86,25 @@ public class RuntimeResourceImpl extends ResourceBase {
         jaxbProcDef.setVariables(variables);
         return createCorrectVariant(jaxbProcDef, headers);
     }
-    
+
+    @GET
+    @Path("/process/{processDefId: [_a-zA-Z0-9-:\\.]+}/getFormData")
+    public Response getFormDataStartingProcess(@PathParam("processDefId") String processId) {
+        ProcessDefinition processAssetDescList = runtimeDataService.getProcessesByDeploymentIdProcessId(deploymentId, processId);
+        Map<String, String> ret = new HashMap<String, String>();
+        if(processAssetDescList!=null){
+            JaxbProcessDefinition jaxbProcDef = convertProcAssetDescToJaxbProcDef(processAssetDescList);
+            ret.put("process-id", processId);
+            ret.put("deployment-id", deploymentId);
+            ret.put("formData", jaxbProcDef.getForms().get(processId+"-taskform.form"));
+        }else{
+            ret.put("process-id", processId);
+            ret.put("deployment-id", deploymentId);
+            ret.put("error", "Asset is null");
+        }
+        return createCorrectVariant(ret, headers);
+    }
+
     @POST
     @Path("/process/{processDefId: [_a-zA-Z0-9-:\\.]+}/start")
     public Response startProcessInstance(@PathParam("processDefId") String processId) {
@@ -137,19 +156,19 @@ public class RuntimeResourceImpl extends ResourceBase {
     public Response abortProcessInstance(@PathParam("procInstId") Long procInstId) {
         Command<?> cmd = new AbortProcessInstanceCommand();
         ((AbortProcessInstanceCommand) cmd).setProcessInstanceId(procInstId);
-       
+
         try { 
             processRequestBean.doKieSessionOperation(
-                cmd, 
-                deploymentId, 
-                procInstId);
+                    cmd, 
+                    deploymentId, 
+                    procInstId);
         } catch( IllegalArgumentException iae ) { 
             if( iae.getMessage().startsWith("Could not find process instance") ) {
                 throw KieRemoteRestOperationException.notFound("Process instance " + procInstId + " is not available.");
             }
             throw iae;
         }
-                
+
         return createCorrectVariant(new JaxbGenericResponse(getRequestUri()), headers);
     }
 
@@ -161,16 +180,15 @@ public class RuntimeResourceImpl extends ResourceBase {
         String eventType = getStringParam("signal", true, params, oper);
         Object event = getObjectParam("event", false, params, oper);
         Command<?> cmd = new SignalEventCommand(procInstId, eventType, event);
-        
+
         processRequestBean.doKieSessionOperation(cmd, deploymentId, procInstId);
-        
+
         return createCorrectVariant(new JaxbGenericResponse(getRequestUri()), headers);
 
     }
 
     @GET
     @Path("/process/instance/{procInstId: [0-9]+}/variable/{varName: [\\w\\.-]+}")
-
     public Response getProcessInstanceVariableByProcInstIdByVarName(@PathParam("procInstId") Long procInstId, @PathParam("varName") String varName) {
         Object procVar;
         try {
@@ -188,7 +206,26 @@ public class RuntimeResourceImpl extends ResourceBase {
         // return
         return createCorrectVariant(procVar, headers);
     }
-  
+
+    @GET
+    @Path("/process/instance/{procInstId: [0-9]+}/variables")
+    public Response getProcessInstanceVariablesByProcInstId(@PathParam("procInstId") Long procInstId) {
+        Object procVar;
+        try {
+            procVar =  processRequestBean.getVariablesObjectsInstanceFromRuntime(deploymentId, procInstId);
+        } catch( ProcessInstanceNotFoundException pinfe ) { 
+            throw KieRemoteRestOperationException.notFound(pinfe.getMessage(), pinfe);
+        } catch( DeploymentNotFoundException dnfe ) { 
+            throw new org.kie.remote.services.exception.DeploymentNotFoundException(dnfe.getMessage());
+        }
+        // handle primitives and their wrappers
+        if (procVar != null && isPrimitiveOrWrapper(procVar.getClass())) {
+            procVar = wrapPrimitive(procVar);
+        }
+        // return
+        return createCorrectVariant(procVar, headers);
+    }
+
     @POST
     @Path("/signal")
     public Response signalProcessInstances() {
@@ -201,7 +238,7 @@ public class RuntimeResourceImpl extends ResourceBase {
                 new SignalEventCommand(eventType, event),
                 deploymentId, 
                 (Long) getNumberParam(PROC_INST_ID_PARAM_NAME, false, requestParams, oper, true));
-        
+
         return createCorrectVariant(new JaxbGenericResponse(getRequestUri()), headers);
     }
 
@@ -213,14 +250,14 @@ public class RuntimeResourceImpl extends ResourceBase {
                 new GetWorkItemCommand(workItemId),
                 deploymentId, 
                 (Long) getNumberParam(PROC_INST_ID_PARAM_NAME, false, getRequestParams(), oper, true));
-               
+
         if( workItem == null ) { 
             throw KieRemoteRestOperationException.notFound("WorkItem " + workItemId + " does not exist.");
         }
-        
+
         return createCorrectVariant(new JaxbWorkItemResponse(workItem), headers);
     }
-    
+
     @POST
     @Path("/workitem/{workItemId: [0-9-]+}/{oper: [a-zA-Z]+}")
     public Response doWorkItemOperation(@PathParam("workItemId") Long workItemId, @PathParam("oper") String operation) {
@@ -235,13 +272,13 @@ public class RuntimeResourceImpl extends ResourceBase {
         } else {
             throw KieRemoteRestOperationException.badRequest("Unsupported operation: " + oper);
         }
-      
-        // Will NOT throw an exception if the work item does not exist!!
+
+        // Will NOT throw an exception if the work item does not exist!! FIXME
         processRequestBean.doKieSessionOperation(
                 cmd, 
                 deploymentId, 
                 (Long) getNumberParam(PROC_INST_ID_PARAM_NAME, false, params, oper, true));
-                
+
         return createCorrectVariant(new JaxbGenericResponse(getRequestUri()), headers);
     }
 
@@ -258,10 +295,10 @@ public class RuntimeResourceImpl extends ResourceBase {
         Map<String, Object> params = extractMapFromParams(requestParams, oper );
 
         ProcessInstance procInst = startProcessInstance(processId, params);
-        
+
         Map<String, String> vars = getVariables(procInst.getId());
         JaxbProcessInstanceWithVariablesResponse resp = new JaxbProcessInstanceWithVariablesResponse(procInst, vars, getRequestUri());
-        
+
         return createCorrectVariant(resp, headers);
     }
 
@@ -271,8 +308,8 @@ public class RuntimeResourceImpl extends ResourceBase {
         ProcessInstance procInst = getProcessInstance(procInstId, true);
         Map<String, String> vars = getVariables(procInstId);
         JaxbProcessInstanceWithVariablesResponse responseObj 
-            = new JaxbProcessInstanceWithVariablesResponse(procInst, vars, getRequestUri());
-        
+        = new JaxbProcessInstanceWithVariablesResponse(procInst, vars, getRequestUri());
+
         return createCorrectVariant(responseObj, headers);
     }
 
@@ -288,15 +325,15 @@ public class RuntimeResourceImpl extends ResourceBase {
                 new SignalEventCommand(procInstId, eventType, event),
                 deploymentId, 
                 procInstId);
-        
+
         ProcessInstance processInstance = getProcessInstance(procInstId, false);
         Map<String, String> vars = getVariables(procInstId);
-        
+
         return createCorrectVariant(new JaxbProcessInstanceWithVariablesResponse(processInstance, vars), headers);
     }
 
     // Helper methods --------------------------------------------------------------------------------------------------------------
-    
+
     private ProcessInstance getProcessInstance(long procInstId, boolean throwEx ) { 
         Command<?> cmd = new GetProcessInstanceCommand(procInstId);
         ((GetProcessInstanceCommand) cmd).setReadOnly(true);
@@ -304,7 +341,7 @@ public class RuntimeResourceImpl extends ResourceBase {
                 cmd,
                 deploymentId, 
                 procInstId);
-        
+
         if (procInstResult != null) {
             return (ProcessInstance) procInstResult;
         } else if( throwEx ) {
@@ -314,44 +351,44 @@ public class RuntimeResourceImpl extends ResourceBase {
             return null;
         }
     }
-    
+
     private Map<String, String> getVariables(long processInstanceId) {
         Object result = processRequestBean.doKieSessionOperation(
                 new FindVariableInstancesCommand(processInstanceId),
                 deploymentId, 
                 processInstanceId);
         List<VariableInstanceLog> varInstLogList = (List<VariableInstanceLog>) result;
-        
+
         Map<String, String> vars = new HashMap<String, String>();
         if( varInstLogList.isEmpty() ) { 
             return vars;
         }
-        
+
         Map<String, VariableInstanceLog> varLogMap = new HashMap<String, VariableInstanceLog>();
         for( VariableInstanceLog varLog: varInstLogList ) {
             String varId = varLog.getVariableId();
             VariableInstanceLog prevVarLog = varLogMap.put(varId, varLog);
             if( prevVarLog != null ) { 
                 if( prevVarLog.getDate().after(varLog.getDate()) ) { 
-                  varLogMap.put(varId, prevVarLog);
+                    varLogMap.put(varId, prevVarLog);
                 } 
             }
         }
-        
+
         for( Entry<String, VariableInstanceLog> varEntry : varLogMap.entrySet() ) { 
             vars.put(varEntry.getKey(), varEntry.getValue().getValue());
         }
-            
+
         return vars;
     }
-    
+
     private ProcessInstance startProcessInstance(String processId, Map<String, Object> params) { 
         Object result = null;
         try { 
             result = processRequestBean.doKieSessionOperation(
-                new StartProcessCommand(processId, params),
-                deploymentId, 
-                null);
+                    new StartProcessCommand(processId, params),
+                    deploymentId, 
+                    null);
         } catch( IllegalArgumentException iae ) { 
             if( iae.getMessage().startsWith("Unknown process ID")) { 
                 throw KieRemoteRestOperationException.notFound("Process '" + processId + "' is not known to this deployment.");
@@ -364,7 +401,7 @@ public class RuntimeResourceImpl extends ResourceBase {
     protected QName getRootElementName(Object object) { 
         boolean xmlRootElemAnnoFound = false;
         Class<?> objClass = object.getClass();
-        
+
         // This usually doesn't work in the kie-wb/bpms environment, see comment below
         XmlRootElement xmlRootElemAnno = objClass.getAnnotation(XmlRootElement.class);
         logger.debug("Getting XML root element annotation for " + object.getClass().getName());
