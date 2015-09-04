@@ -1,5 +1,7 @@
 package org.kie.remote.services.rest;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 import javax.enterprise.context.RequestScoped;
@@ -18,6 +20,7 @@ import org.kie.internal.runtime.conf.DeploymentDescriptor;
 import org.kie.services.client.serialization.jaxb.impl.deploy.JaxbDeploymentDescriptor;
 import org.kie.services.client.serialization.jaxb.impl.deploy.JaxbDeploymentJobResult;
 import org.kie.services.client.serialization.jaxb.impl.deploy.JaxbDeploymentUnit;
+import org.kie.services.client.serialization.jaxb.impl.process.JaxbProcessDefinition;
 import org.kie.services.client.serialization.jaxb.impl.process.JaxbProcessDefinitionList;
 import org.kie.services.client.serialization.jaxb.rest.JaxbGenericResponse;
 import org.slf4j.Logger;
@@ -31,20 +34,20 @@ import org.slf4j.LoggerFactory;
 public class DeploymentResourceImpl extends ResourceBase {
 
     private static final Logger logger = LoggerFactory.getLogger(DeploymentResourceImpl.class);
-    
+
     /* REST information */
-    
+
     @Context
     private HttpHeaders headers;
-    
+
     @PathParam("deploymentId")
     private String deploymentId;
-    
+
     /* Deployment operations */
-   
+
     @Inject 
     private DeployResourceBase deployResourceBase;
-   
+
     // REST operations -----------------------------------------------------------------------------------------------------------
 
     /**
@@ -75,12 +78,12 @@ public class DeploymentResourceImpl extends ResourceBase {
         String oper = getRelativePath();
         String strategy = getStringParam("strategy", false, params, oper);
         String mergeMode = getStringParam("mergemode", false, params, oper);
-        
+
         // schedule deployment
         JaxbDeploymentJobResult jobResult = deployResourceBase.submitDeployJob(deploymentId, strategy, mergeMode, deployDescriptor);
         return createCorrectVariant(jobResult, headers, Status.ACCEPTED);
     }
-   
+
     /**
      * Queues a request to undeploy the deployment unit specified in the URL
      * 
@@ -92,7 +95,7 @@ public class DeploymentResourceImpl extends ResourceBase {
         JaxbDeploymentJobResult jobResult = deployResourceBase.submitUndeployJob(deploymentId);
         return createCorrectVariant(jobResult, headers, Status.ACCEPTED);
     }
-   
+
 
     /**
      * Returns a list of the first ten process definitions for the specified deployment.
@@ -105,9 +108,39 @@ public class DeploymentResourceImpl extends ResourceBase {
         int maxNumResults = 10; 
         JaxbProcessDefinitionList jaxbProcDefList  = new JaxbProcessDefinitionList();
         deployResourceBase.fillProcessDefinitionList(deploymentId, pageInfo, maxNumResults, jaxbProcDefList.getProcessDefinitionList());
-        JaxbProcessDefinitionList resultList 
-            = paginateAndCreateResult(pageInfo, jaxbProcDefList.getProcessDefinitionList(), new JaxbProcessDefinitionList());
-        return createCorrectVariant(resultList, headers);
+        JaxbProcessDefinitionList resultList = paginateAndCreateResult(pageInfo, jaxbProcDefList.getProcessDefinitionList(), new JaxbProcessDefinitionList());
+        
+        JaxbProcessDefinitionList resultList2 = removeFormsIfNeeded(resultList);
+        
+        return createCorrectVariant(resultList2, headers);
+    }
+
+    private JaxbProcessDefinitionList removeFormsIfNeeded(JaxbProcessDefinitionList resultList) {
+        JaxbProcessDefinitionList resultList2 = null;
+        Map<String, String[]> params = getRequestParams();
+        logger.info(params.get("minimal").toString());
+        boolean expressionLogic = params.containsKey("minimal") && params.get("minimal")[0].equals("true");
+        logger.info(expressionLogic+"");
+        if(expressionLogic){
+            resultList2=new JaxbProcessDefinitionList();
+            resultList2.setPageNumber(resultList.getPageNumber());
+            resultList2.setPageSize(resultList.getPageSize());
+            List<JaxbProcessDefinition> processDefinitionList = resultList.getProcessDefinitionList();
+            List<JaxbProcessDefinition> processDefinitionList2 = new ArrayList<JaxbProcessDefinition>();
+            for (JaxbProcessDefinition jpd : processDefinitionList) {
+                JaxbProcessDefinition jd=new JaxbProcessDefinition();
+                jd.setDeploymentId(jpd.getDeploymentId());
+                jd.setId(jpd.getId());
+                jd.setName(jpd.getName());
+                jd.setPackageName(jpd.getPackageName());
+                jd.setVersion(jpd.getVersion());
+                processDefinitionList2.add(jd);
+            }
+            resultList2.setProcessDefinitionList(processDefinitionList2);
+        }else{
+            resultList2=resultList;
+        }
+        return resultList2;
     }
 
     /**
@@ -121,14 +154,17 @@ public class DeploymentResourceImpl extends ResourceBase {
         Map<String, String[]> params = getRequestParams();
         int [] pageInfo = getPageNumAndPageSize(params, oper);
         int maxNumResults = getMaxNumResultsNeeded(pageInfo); 
-        
+
         JaxbProcessDefinitionList jaxbProcDefList  = new JaxbProcessDefinitionList();
         deployResourceBase.fillProcessDefinitionList(deploymentId, pageInfo, maxNumResults, jaxbProcDefList.getProcessDefinitionList());
         JaxbProcessDefinitionList resultList 
-            = paginateAndCreateResult(pageInfo, jaxbProcDefList.getProcessDefinitionList(), new JaxbProcessDefinitionList());
-        return createCorrectVariant(resultList, headers);
+        = paginateAndCreateResult(pageInfo, jaxbProcDefList.getProcessDefinitionList(), new JaxbProcessDefinitionList());
+       
+        JaxbProcessDefinitionList resultList2 = removeFormsIfNeeded(resultList);
+        
+        return createCorrectVariant(resultList2, headers);
     }
-    
+
     @POST
     @Path("/activate")
     public Response activate() {
